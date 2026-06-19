@@ -33,8 +33,7 @@ map:
   - share:rw
 options:
   # JK-BMS Configuration
-  jkbms_path: "/dev/serial/by-id/usb-yyyy_USB_Serial-abcdefghij"   # ЗМІНЕНО: шлях ДРУГОГО USB-адаптера
-                                                                     #   (або лишити порожнім, якщо use_gateway: true)
+  jkbms_path: "/dev/serial/by-id/usb-FTDI_USB__-_Serial_Converter_FT9LBZ9-if00-port0"   # ЗМІНЕНО: COM1 / ttyUSB3 на платі FTDI
   jkbms_count: 15                                  # ЗМІНЕНО: максимум аддону (запас на майбутнє розширення),
                                                     #   реально підключено 14 — адреси без відповіді
                                                     #   просто додають невелику затримку циклу опитування
