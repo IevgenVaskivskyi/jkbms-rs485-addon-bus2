@@ -21,9 +21,9 @@ if ("theme" in options && options.theme !== "default") {
 
 config.debugUseColors = false;
 config.flowFile = "flows.json";
-config.nodesDir = "/config/smartphoton_jkbms/nodes";
+config.nodesDir = "/config/smartphoton_jkbms_bus2/nodes";
 config.uiPort = 1892;
-config.userDir = "/config/smartphoton_jkbms/";
+config.userDir = "/config/smartphoton_jkbms_bus2/";
 config.httpNodeRoot = "/endpoint";
 
 console.log("✅ Node-RED is using userDir =", config.userDir);
