@@ -4,21 +4,17 @@
 # Home Assistant Community Add-on: Node-RED
 # Configure Node-RED avant exécution
 # ==============================================================================
-
 # Assure que la configuration existe
 if ! bashio::fs.directory_exists '/config/smartphoton_jkbms_bus2/'; then
     mkdir -p /config/smartphoton_jkbms_bus2/nodes \
         || bashio::exit.nok "Failed to create node-red configuration directory"
-
     # Copie les fichiers modèles
     cp /etc/node-red/flows.json /config/smartphoton_jkbms_bus2/
     cp /etc/node-red/settings.js /config/smartphoton_jkbms_bus2/
-
     # Création d'un ID de flow aléatoire
     id=$(node -e "console.log((1+Math.random()*4294967295).toString(16));")
     sed -i "s/%%ID%%/${id}/" "/config/smartphoton_jkbms_bus2/flows.json"
 fi
-
 # Vérification de version
 if ! bashio::fs.file_exists '/config/smartphoton_jkbms_bus2/version'; then
     touch /config/smartphoton_jkbms_bus2/version
@@ -40,13 +36,100 @@ else
         cp /etc/node-red/flows.json /config/smartphoton_jkbms_bus2/
     fi
 fi
-
 # Remplace le fichier flows par celui d'origine
 if bashio::fs.file_exists '/config/smartphoton_jkbms_bus2/flows.backup'; then
     rm /config/smartphoton_jkbms_bus2/flows.backup
 fi
 mv /config/smartphoton_jkbms_bus2/flows.json /config/smartphoton_jkbms_bus2/flows.backup
 cp /etc/node-red/flows.json /config/smartphoton_jkbms_bus2/
+
+# ==============================================================================
+# BUS2 PATCH: Automatiquement ajouter le préfixe B2_ aux noeuds broadcasting
+# Ce patch est appliqué à chaque démarrage après la copie du flows.json original
+# ==============================================================================
+bashio::log.info "Applying BUS2 prefix patch to flows.json..."
+python3 - <<'PYEOF'
+import json
+
+f = '/config/smartphoton_jkbms_bus2/flows.json'
+with open(f) as fp:
+    data = json.load(fp)
+
+BUS_PREFIX = "B2_"
+TARGETS = ["Setup To MQTT", "Data To MQTT", "TRAITEMENT DES ALARMES", "AGRÉGATION GLOBALE"]
+count = 0
+
+for node in data:
+    if node.get('type') != 'function':
+        continue
+    if node.get('name') not in TARGETS:
+        continue
+    func = node.get('func', '')
+    if 'busPrefix' in func:
+        print(f"Already patched: {node['name']}")
+        continue
+
+    func = f'// BUS2 AUTO-PATCH\nconst busPrefix = "{BUS_PREFIX}";\n\n' + func
+
+    func = func.replace(
+        'var baseTopic = "BMS_" + slaveIdStr;',
+        'var baseTopic = busPrefix + "BMS_" + slaveIdStr;'
+    ).replace(
+        'const baseTopic = `BMS_${slaveIdStr}`;',
+        'const baseTopic = busPrefix + `BMS_${slaveIdStr}`;'
+    ).replace(
+        'const baseTopic = `BMS_${bmsId}`;',
+        'const baseTopic = busPrefix + `BMS_${bmsId}`;'
+    ).replace(
+        'var deviceName = "BMS_" + slaveIdStr;',
+        'var deviceName = busPrefix + "BMS_" + slaveIdStr;'
+    ).replace(
+        'const deviceName = `BMS_${slaveIdStr}`;',
+        'const deviceName = busPrefix + `BMS_${slaveIdStr}`;'
+    ).replace(
+        'const deviceName = `BMS_${bmsId}`;',
+        'const deviceName = busPrefix + `BMS_${bmsId}`;'
+    ).replace(
+        'var deviceID = "BMS_" + slaveIdStr + "_device";',
+        'var deviceID = busPrefix + "BMS_" + slaveIdStr + "_device";'
+    ).replace(
+        'const deviceID = `BMS_${bmsId}_device`;',
+        'const deviceID = busPrefix + `BMS_${bmsId}_device`;'
+    ).replace(
+        'bmsName = "BMS_master";',
+        'bmsName = busPrefix + "BMS_master";'
+    ).replace(
+        'bmsName = (bmsId === 0) ? "BMS_master" : `BMS_${bmsId}`;',
+        'bmsName = (bmsId === 0) ? (busPrefix + "BMS_master") : (busPrefix + `BMS_${bmsId}`);'
+    ).replace(
+        'const globalDeviceID = "BMS_GLOBAL_device";',
+        'const globalDeviceID = busPrefix + "BMS_GLOBAL_device";\n    const globalBaseTopic = busPrefix + "BMS_GLOBAL";'
+    ).replace(
+        '"BMS_GLOBAL/alarm/state"',
+        '`${globalBaseTopic}/alarm/state`'
+    ).replace(
+        'flow.get("discoverySent_GLOBAL_ALARM")',
+        'flow.get(busPrefix + "discoverySent_GLOBAL_ALARM")'
+    ).replace(
+        'flow.set("discoverySent_GLOBAL_ALARM", true)',
+        'flow.set(busPrefix + "discoverySent_GLOBAL_ALARM", true)'
+    )
+
+    node['func'] = func
+    count += 1
+    print(f"Patched: {node['name']}")
+
+with open(f, 'w') as fp:
+    json.dump(data, fp)
+
+print(f"BUS2 patch complete: {count} nodes patched")
+PYEOF
+
+PATCHED=$(grep -c "busPrefix\|B2_" /config/smartphoton_jkbms_bus2/flows.json || true)
+bashio::log.info "BUS2 patch verification: ${PATCHED} occurrences found in flows.json"
+# ==============================================================================
+# END BUS2 PATCH
+# ==============================================================================
 
 # Désinstallation des packages Node-RED conflictuels
 cd /config || bashio::exit.nok "Could not change directory to Node-RED"
