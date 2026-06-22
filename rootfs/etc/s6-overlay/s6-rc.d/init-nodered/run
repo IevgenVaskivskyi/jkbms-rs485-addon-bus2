@@ -45,88 +45,66 @@ cp /etc/node-red/flows.json /config/smartphoton_jkbms_bus2/
 
 # ==============================================================================
 # BUS2 PATCH: Automatiquement ajouter le préfixe B2_ aux noeuds broadcasting
-# Ce patch est appliqué à chaque démarrage après la copie du flows.json original
+# Utilise Node.js (disponible dans l'image) au lieu de python3
 # ==============================================================================
 bashio::log.info "Applying BUS2 prefix patch to flows.json..."
-python3 - <<'PYEOF'
-import json
+node - <<'JSEOF'
+const fs = require('fs');
+const f = '/config/smartphoton_jkbms_bus2/flows.json';
+const BUS_PREFIX = 'B2_';
+const TARGETS = ['Setup To MQTT', 'Data To MQTT', 'TRAITEMENT DES ALARMES', 'AGRÉGATION GLOBALE'];
 
-f = '/config/smartphoton_jkbms_bus2/flows.json'
-with open(f) as fp:
-    data = json.load(fp)
+let data;
+try {
+    data = JSON.parse(fs.readFileSync(f, 'utf8'));
+} catch(e) {
+    console.error('BUS2 PATCH ERROR: cannot read flows.json:', e.message);
+    process.exit(0); // ne pas bloquer le démarrage
+}
 
-BUS_PREFIX = "B2_"
-TARGETS = ["Setup To MQTT", "Data To MQTT", "TRAITEMENT DES ALARMES", "AGRÉGATION GLOBALE"]
-count = 0
+let count = 0;
+for (const node of data) {
+    if (node.type !== 'function') continue;
+    if (!TARGETS.includes(node.name)) continue;
+    let func = node.func || '';
+    if (func.includes('busPrefix')) {
+        console.log('Already patched: ' + node.name);
+        continue;
+    }
 
-for node in data:
-    if node.get('type') != 'function':
-        continue
-    if node.get('name') not in TARGETS:
-        continue
-    func = node.get('func', '')
-    if 'busPrefix' in func:
-        print(f"Already patched: {node['name']}")
-        continue
+    func = '// BUS2 AUTO-PATCH\nconst busPrefix = "' + BUS_PREFIX + '";\n\n' + func;
 
-    func = f'// BUS2 AUTO-PATCH\nconst busPrefix = "{BUS_PREFIX}";\n\n' + func
+    func = func
+        .replace('var baseTopic = "BMS_" + slaveIdStr;', 'var baseTopic = busPrefix + "BMS_" + slaveIdStr;')
+        .replace('const baseTopic = `BMS_${slaveIdStr}`;', 'const baseTopic = busPrefix + `BMS_${slaveIdStr}`;')
+        .replace('const baseTopic = `BMS_${bmsId}`;', 'const baseTopic = busPrefix + `BMS_${bmsId}`;')
+        .replace('var deviceName = "BMS_" + slaveIdStr;', 'var deviceName = busPrefix + "BMS_" + slaveIdStr;')
+        .replace('const deviceName = `BMS_${slaveIdStr}`;', 'const deviceName = busPrefix + `BMS_${slaveIdStr}`;')
+        .replace('const deviceName = `BMS_${bmsId}`;', 'const deviceName = busPrefix + `BMS_${bmsId}`;')
+        .replace('var deviceID = "BMS_" + slaveIdStr + "_device";', 'var deviceID = busPrefix + "BMS_" + slaveIdStr + "_device";')
+        .replace('const deviceID = `BMS_${bmsId}_device`;', 'const deviceID = busPrefix + `BMS_${bmsId}_device`;')
+        .replace('bmsName = "BMS_master";', 'bmsName = busPrefix + "BMS_master";')
+        .replace('bmsName = (bmsId === 0) ? "BMS_master" : `BMS_${bmsId}`;', 'bmsName = (bmsId === 0) ? (busPrefix + "BMS_master") : (busPrefix + `BMS_${bmsId}`);')
+        .replace('const globalDeviceID = "BMS_GLOBAL_device";', 'const globalDeviceID = busPrefix + "BMS_GLOBAL_device";\n    const globalBaseTopic = busPrefix + "BMS_GLOBAL";')
+        .replace('"BMS_GLOBAL/alarm/state"', '`${globalBaseTopic}/alarm/state`')
+        .replace('flow.get("discoverySent_GLOBAL_ALARM")', 'flow.get(busPrefix + "discoverySent_GLOBAL_ALARM")')
+        .replace('flow.set("discoverySent_GLOBAL_ALARM", true)', 'flow.set(busPrefix + "discoverySent_GLOBAL_ALARM", true)');
 
-    func = func.replace(
-        'var baseTopic = "BMS_" + slaveIdStr;',
-        'var baseTopic = busPrefix + "BMS_" + slaveIdStr;'
-    ).replace(
-        'const baseTopic = `BMS_${slaveIdStr}`;',
-        'const baseTopic = busPrefix + `BMS_${slaveIdStr}`;'
-    ).replace(
-        'const baseTopic = `BMS_${bmsId}`;',
-        'const baseTopic = busPrefix + `BMS_${bmsId}`;'
-    ).replace(
-        'var deviceName = "BMS_" + slaveIdStr;',
-        'var deviceName = busPrefix + "BMS_" + slaveIdStr;'
-    ).replace(
-        'const deviceName = `BMS_${slaveIdStr}`;',
-        'const deviceName = busPrefix + `BMS_${slaveIdStr}`;'
-    ).replace(
-        'const deviceName = `BMS_${bmsId}`;',
-        'const deviceName = busPrefix + `BMS_${bmsId}`;'
-    ).replace(
-        'var deviceID = "BMS_" + slaveIdStr + "_device";',
-        'var deviceID = busPrefix + "BMS_" + slaveIdStr + "_device";'
-    ).replace(
-        'const deviceID = `BMS_${bmsId}_device`;',
-        'const deviceID = busPrefix + `BMS_${bmsId}_device`;'
-    ).replace(
-        'bmsName = "BMS_master";',
-        'bmsName = busPrefix + "BMS_master";'
-    ).replace(
-        'bmsName = (bmsId === 0) ? "BMS_master" : `BMS_${bmsId}`;',
-        'bmsName = (bmsId === 0) ? (busPrefix + "BMS_master") : (busPrefix + `BMS_${bmsId}`);'
-    ).replace(
-        'const globalDeviceID = "BMS_GLOBAL_device";',
-        'const globalDeviceID = busPrefix + "BMS_GLOBAL_device";\n    const globalBaseTopic = busPrefix + "BMS_GLOBAL";'
-    ).replace(
-        '"BMS_GLOBAL/alarm/state"',
-        '`${globalBaseTopic}/alarm/state`'
-    ).replace(
-        'flow.get("discoverySent_GLOBAL_ALARM")',
-        'flow.get(busPrefix + "discoverySent_GLOBAL_ALARM")'
-    ).replace(
-        'flow.set("discoverySent_GLOBAL_ALARM", true)',
-        'flow.set(busPrefix + "discoverySent_GLOBAL_ALARM", true)'
-    )
+    node.func = func;
+    count++;
+    console.log('Patched: ' + node.name);
+}
 
-    node['func'] = func
-    count += 1
-    print(f"Patched: {node['name']}")
+try {
+    fs.writeFileSync(f, JSON.stringify(data));
+    console.log('BUS2 patch complete: ' + count + ' nodes patched');
+} catch(e) {
+    console.error('BUS2 PATCH ERROR: cannot write flows.json:', e.message);
+}
+JSEOF
 
-with open(f, 'w') as fp:
-    json.dump(data, fp)
-
-print(f"BUS2 patch complete: {count} nodes patched")
-PYEOF
-
-PATCHED=$(grep -c "busPrefix\|B2_" /config/smartphoton_jkbms_bus2/flows.json || true)
-bashio::log.info "BUS2 patch verification: ${PATCHED} occurrences found in flows.json"
+PATCHED=$(grep -c "busPrefix" /config/smartphoton_jkbms_bus2/flows.json || true)
+bashio::log.info "BUS2 patch verification: ${PATCHED} occurrences of busPrefix found"
 # ==============================================================================
 # END BUS2 PATCH
 # ==============================================================================
