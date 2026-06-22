@@ -1,6 +1,6 @@
 ---
 name: "🔵 BUS-2 JK-BMS (custom fork)"               # ЗМІНЕНО: яскраво відмінна назва, легко знайти в Store
-version: 4.1.5-bus2.4
+version: 4.1.5-bus2.5
 slug: "smartphoton_jkbms_bus2"                     # ЗМІНЕНО: унікальний slug, інакше Supervisor
                                                     #   побачить конфлікт з оригінальним аддоном
 description: "[CUSTOM FORK for second RS485 bus] JK-BMS Management — DO NOT confuse with original addon"
